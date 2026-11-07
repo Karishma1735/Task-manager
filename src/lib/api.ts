@@ -1,9 +1,9 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
 import { getDb, type Db } from "@/db";
 import { readCookie, requireRole, getSessionUser, SESSION_COOKIE, type Actor, type Role } from "@/lib/auth";
 import { systemClock } from "@/lib/clock";
 import { ApiError, badRequest, forbidden } from "@/lib/errors";
+export { parseBody } from "@/lib/validate";
 
 export interface Ctx {
   req: Request;
@@ -53,16 +53,6 @@ export function assertSameOrigin(req: Request): void {
   const fwd = req.headers.get("x-forwarded-host");
   if (fwd) allowed.add(fwd.split(",")[0]!.trim());
   if (!allowed.has(originHost)) throw forbidden("Cross-origin request rejected");
-}
-
-export function parseBody<S extends z.ZodType>(schema: S, value: unknown): z.infer<S> {
-  const r = schema.safeParse(value);
-  if (!r.success) {
-    throw new ApiError(422, "validation_failed", "Validation failed", {
-      issues: r.error.issues.map((i) => ({ path: i.path.join("."), message: i.message })),
-    });
-  }
-  return r.data;
 }
 
 export async function readJson(req: Request): Promise<unknown> {
