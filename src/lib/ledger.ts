@@ -384,6 +384,7 @@ export interface MyDayView {
   today: string;
   tomorrow: string;
   date: string;
+  weekStart: string;
   commitByHour: number;
   tz: string;
   deadlineAt: string;
@@ -453,6 +454,7 @@ export function getMyDay(db: Db, dateParam: string | undefined, now: Date, cfg =
     today,
     tomorrow,
     date,
+    weekStart: weekStartOf(date),
     commitByHour: cfg.commitByHour,
     tz: cfg.tz,
     deadlineAt: commitDeadline(date, cfg).toISOString(),
