@@ -18,6 +18,10 @@
   --ok-soft: #e1f0e6;
   --warn: #8a5a00;
   --warn-soft: #f8ecd0;
+  --lvl-1: #b3a089;
+  --lvl-2: #d99a3d;
+  --lvl-4: #d4506a;
+  --lvl-8: #6f0e24;
   color-scheme: light;
 }
 
@@ -36,6 +40,10 @@
     --ok-soft: #17301f;
     --warn: #e8bd63;
     --warn-soft: #33270f;
+    --lvl-1: #9a8a78;
+    --lvl-2: #e0a64a;
+    --lvl-4: #f0788e;
+    --lvl-8: #ffc2cc;
     color-scheme: dark;
   }
 }
@@ -83,6 +91,21 @@ h1, h2, h3, .display {
 }
 
 @layer components {
+  .circle {
+    display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0;
+    border-radius: 999px; font-family: var(--font-display); font-weight: 700; line-height: 1;
+    color: var(--ink); text-decoration: none;
+  }
+  .circle-confirmed { border: 4px solid var(--ok); background: var(--ok-soft); }
+  .circle-awaiting {
+    border: 2px solid var(--cherry);
+    background: repeating-linear-gradient(135deg, var(--cherry-soft) 0 5px, transparent 5px 10px);
+  }
+  .circle-zero { border: 2px dashed var(--muted); background: transparent; color: var(--muted); }
+  .stripes {
+    background-image: repeating-linear-gradient(135deg, transparent 0 3px, var(--surface) 3px 5px);
+  }
+  :target { outline: 3px solid var(--cherry); outline-offset: 4px; border-radius: 0.75rem; }
   .card {
     background: var(--surface);
     border: 1px solid var(--line);

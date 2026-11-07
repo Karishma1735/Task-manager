@@ -1,7 +1,8 @@
 # Value Ledger
 
-Measures the value of work delivered, not the number of tasks. Phases 0 and 1 of [docs/SPEC.md](docs/SPEC.md):
+Measures the value of work delivered, not the number of tasks. Phases 0–2 of [docs/SPEC.md](docs/SPEC.md):
 foundation, authentication, scoring engine, owner API and the **My Day** screen.
+Phase 2 adds the **Report** screen and reviewer verification.
 Private project — no deployment, email, Slack or viaSocket integration exists yet.
 
 ## Run locally
@@ -44,6 +45,9 @@ npm run test:e2e                  # builds, starts on :3100 with a throwaway DB 
 | `POST /api/days/:date/unplanned` | owner | today only |
 | `POST /api/days/:date/close` | owner | only when nothing is open |
 | `GET /api/goals`, `GET`/`PUT /api/goals/:weekStart` | owner + reviewer | up to 3 goals; audited with actor |
+| `GET /api/report?week=YYYY-MM-DD` | owner + reviewer | six measures computed by `lib/scoring.ts`, circles, eight-week bars, goals, day log |
+| `PUT /api/reviews/:outcomeId` | reviewer only | `confirmedPoints` ∈ 0,1,2,4,8; delivered outcomes of closed days; audited |
+| `PUT /api/day-notes/:date` | reviewer only | one note per reviewer per day; audited |
 
 Errors: 400 malformed · 401 unauthenticated · 403 role/CSRF · 404 · 409 state conflict · 422 validation/rule · 429 rate limit.
 
@@ -55,3 +59,11 @@ Errors: 400 malformed · 401 unauthenticated · 403 role/CSRF · 404 · 409 stat
 - **High-leverage share** uses effective points (a reviewer lowering an 8 to 1 removes it from the share).
 - **Goals**: owner and reviewers can edit (spec's stated assumption), for the current or next week; a goal that outcomes use cannot be removed.
 - Unplanned work has no "done means"; it is stored `planned = false`, status `done`.
+
+## Phase 2: report and review
+
+- `src/lib/report.ts` builds the report; `src/lib/reviews.ts` holds reviewer writes; `src/lib/report-text.ts` builds the copy-paste text (nothing is ever sent automatically).
+- Screens: `/login`, `/my-day` (owner), `/report` (owner read-only; reviewers land here and can score and add notes).
+- Reviews need a **closed** day and a **delivered** outcome (done + proof + result). Re-saving the same score writes no audit entry.
+- Eight-week bars bucket by the *effective* level (confirmed points if reviewed, else the claim); a reviewer score of 0 adds nothing, and confirmed vs awaiting are drawn solid vs striped.
+- Circle size ∝ √points so area tracks worth; a zero-scored outcome is a dashed empty circle drawn at its claimed size.

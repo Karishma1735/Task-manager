@@ -240,3 +240,30 @@ export function computeReport(input: ReportInput): ReportMeasures {
 export function toPercent(m: Measure): number | null {
   return m.value === null ? null : Math.round(m.value * 100);
 }
+
+export interface LevelBucket {
+  confirmed: number;
+  awaiting: number;
+}
+export type ValueByLevel = Record<1 | 2 | 4 | 8, LevelBucket>;
+
+/**
+ * Value split by *effective* level (the reviewer's confirmed points if reviewed, else the claim),
+ * keeping confirmed and awaiting-review value separate. A reviewer score of 0 contributes nothing.
+ * Points are summed, never counted, so splitting work into more pieces cannot raise a bar.
+ */
+export function valueByLevel(outcomes: readonly ScoredOutcome[], reviews: readonly ScoredReview[]): ValueByLevel {
+  const latest = latestReviews(reviews);
+  const out: ValueByLevel = {
+    1: { confirmed: 0, awaiting: 0 },
+    2: { confirmed: 0, awaiting: 0 },
+    4: { confirmed: 0, awaiting: 0 },
+    8: { confirmed: 0, awaiting: 0 },
+  };
+  for (const o of outcomes) {
+    const e = effectivePoints(o, latest);
+    if (e.state === "none" || e.points === 0) continue;
+    out[e.points as 1 | 2 | 4 | 8][e.state === "confirmed" ? "confirmed" : "awaiting"] += e.points;
+  }
+  return out;
+}

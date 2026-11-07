@@ -10,6 +10,9 @@ import { POST as unplannedRoute } from "@/app/api/days/[date]/unplanned/route";
 import { POST as closeOutcomeRoute } from "@/app/api/outcomes/[id]/close/route";
 import { GET as getGoalsRoute, PUT as putGoalsRoute } from "@/app/api/goals/[weekStart]/route";
 import { GET as myDay } from "@/app/api/my-day/route";
+import { GET as reportRoute } from "@/app/api/report/route";
+import { PUT as reviewRoute } from "@/app/api/reviews/[outcomeId]/route";
+import { PUT as noteRoute } from "@/app/api/day-notes/[date]/route";
 import { loginLimiter } from "@/lib/auth";
 import { makeWorld, MON_0930 } from "./helpers";
 
@@ -141,5 +144,45 @@ describe("owner flow over HTTP", () => {
     expect(g.body.data.goals).toHaveLength(1);
     expect((await call(putGoalsRoute as Handler, req("PUT", "/api/goals/2026-11-09", { body }), W)).status).toBe(401);
     expect((await call(putGoalsRoute as Handler, req("PUT", "/api/goals/2026-11-10", { cookie: owner, body }), { weekStart: "2026-11-10" })).status).toBe(400);
+  });
+});
+
+describe("reviewer verification over HTTP", () => {
+  async function deliveredOutcome() {
+    const add = await call(addOutcomeRoute as Handler, req("POST", "/api/days/2026-11-09/outcomes", { cookie: owner, body: { title: "Ship it", doneMeans: "Live", level: 4 } }), D);
+    const id = add.body.data.outcome.id as number;
+    await call(commitRoute as Handler, req("POST", "/api/days/2026-11-09/commit", { cookie: owner, body: {} }), D);
+    await call(closeOutcomeRoute as Handler, req("POST", `/api/outcomes/${id}/close`, { cookie: owner, body: { status: "done", proofUrl: "https://example.com/p", result: "Live now" } }), { id: String(id) });
+    await call(closeDayRoute as Handler, req("POST", "/api/days/2026-11-09/close", { cookie: owner, body: { highlight: "Shipped" } }), D);
+    return id;
+  }
+
+  it("the owner cannot modify reviewer scores or notes (403); anonymous gets 401", async () => {
+    const id = await deliveredOutcome();
+    const P = { outcomeId: String(id) };
+    expect((await call(reviewRoute as Handler, req("PUT", `/api/reviews/${id}`, { cookie: owner, body: { confirmedPoints: 8 } }), P)).status).toBe(403);
+    expect((await call(noteRoute as Handler, req("PUT", "/api/day-notes/2026-11-09", { cookie: owner, body: { note: "x" } }), D)).status).toBe(403);
+    expect((await call(reviewRoute as Handler, req("PUT", `/api/reviews/${id}`, { body: { confirmedPoints: 8 } }), P)).status).toBe(401);
+    const rep = await call(reportRoute as Handler, req("GET", "/api/report?week=2026-11-09", { cookie: owner }));
+    expect(rep.body.data.value).toEqual({ confirmed: 0, awaiting: 4, total: 4 });
+  });
+
+  it("a reviewer scores, the report reflects it, and bad input gets 400/422", async () => {
+    const id = await deliveredOutcome();
+    const P = { outcomeId: String(id) };
+    const put = (body: unknown, cookie = reviewer, origin?: string) =>
+      call(reviewRoute as Handler, req("PUT", `/api/reviews/${id}`, { cookie, body, origin }), P);
+    expect((await put({ confirmedPoints: 3 })).status).toBe(422);
+    expect((await put({ confirmedPoints: 8 }, reviewer, "http://evil.test")).status).toBe(403);
+    expect((await put({ confirmedPoints: 8 })).status).toBe(200);
+    expect((await call(reviewRoute as Handler, req("PUT", "/api/reviews/abc", { cookie: reviewer, body: { confirmedPoints: 8 } }), { outcomeId: "abc" })).status).toBe(400);
+    expect((await call(noteRoute as Handler, req("PUT", "/api/day-notes/2026-11-09", { cookie: reviewer, body: { note: "Great work" } }), D)).status).toBe(200);
+    const rep = await call(reportRoute as Handler, req("GET", "/api/report", { cookie: reviewer }));
+    expect(rep.status).toBe(200);
+    expect(rep.body.data.value).toEqual({ confirmed: 8, awaiting: 0, total: 8 });
+    expect(rep.body.data.measures.claimAccuracy.percent).toBe(200);
+    expect(rep.body.data.days[0].notes[0].note).toBe("Great work");
+    expect((await call(reportRoute as Handler, req("GET", "/api/report?week=2026-11-10", { cookie: reviewer }))).status).toBe(400);
+    expect((await call(reportRoute as Handler, req("GET", "/api/report"))).status).toBe(401);
   });
 });

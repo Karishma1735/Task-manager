@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useCallback, useState } from "react";
+import { CopyButton } from "@/components/CopyButton";
 import { LevelPicker } from "@/components/LevelPicker";
 import { LogoutButton } from "@/components/LogoutButton";
 import { api, describeError } from "@/lib/client-api";
 import type { MyDayView } from "@/lib/ledger";
+import type { ReportView } from "@/lib/report";
+import { dayReportText } from "@/lib/report-text";
 import { isValidProofUrl, LEVEL_NAMES } from "@/lib/scoring";
 
 type Outcome = MyDayView["planned"][number];
@@ -180,7 +183,7 @@ export function MyDay({ initial, userName }: { initial: MyDayView; userName: str
 
         <aside className="space-y-8" aria-label="Goals and summary">
           <GoalsPanel view={view} onSaved={refresh} />
-          <SummaryPanel view={view} />
+          <SummaryPanel view={view} userName={userName} />
         </aside>
       </div>
     </main>
@@ -597,7 +600,15 @@ function GoalsPanel({ view, onSaved }: { view: MyDayView; onSaved: () => void })
   );
 }
 
-function SummaryPanel({ view }: { view: MyDayView }) {
+/** Builds today's plain-text report from the report read model (never sent anywhere). */
+async function todaysReportText(view: MyDayView, ownerName: string): Promise<string> {
+  const r = await api<ReportView>("GET", `/api/report?week=${view.weekStart}`);
+  if (!r.ok) return `Could not load today's report: ${r.error.message}`;
+  const day = r.data.days.find((d) => d.date === view.today);
+  return day ? dayReportText(day, ownerName) : `VALUE LEDGER — Day report\nNothing recorded for ${view.today} yet.`;
+}
+
+function SummaryPanel({ view, userName }: { view: MyDayView; userName: string }) {
   const { summary, day } = view;
   const committed = Boolean(day.lockedAt);
   const dv = summary.deliveredPoints;
@@ -626,6 +637,9 @@ function SummaryPanel({ view }: { view: MyDayView }) {
           </div>
         )}
       </dl>
+      <div className="mt-5 border-t border-line pt-4">
+        <CopyButton label="Copy today’s report" getText={() => todaysReportText(view, userName)} />
+      </div>
       {view.reviewerNotes.length > 0 && (
         <div className="mt-5 border-t border-line pt-4">
           <p className="eyebrow">Reviewer note</p>
