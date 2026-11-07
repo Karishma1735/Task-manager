@@ -9,12 +9,19 @@ import type { WebhookHealth } from "@/lib/viasocket";
 
 interface Data {
   notifications: NotificationView[];
-  health: { hooks: WebhookHealth[]; tokenConfigured: boolean };
+  health: { hooks: WebhookHealth[]; tokenConfigured: boolean; scheduled: { reminderTokenConfigured: boolean; enabled: boolean } };
   commitByHour: number;
   tz: string;
 }
 
-const TYPE_LABEL: Record<string, string> = { commit: "Plan committed", daily_report: "Day closed", review: "Reviewer saved" };
+const TYPE_LABEL: Record<string, string> = {
+  commit: "Plan committed",
+  daily_report: "Day closed",
+  review: "Reviewer saved",
+  reminder_morning: "Morning reminder",
+  reminder_evening: "Evening reminder",
+  weekly_digest: "Weekly digest",
+};
 const STATUS_STYLE: Record<string, string> = { sent: "border-ok text-ok", pending: "border-warn text-warn", failed: "border-cherry text-cherry" };
 const when = (iso: string | null, tz: string) =>
   iso ? new Intl.DateTimeFormat("en-GB", { dateStyle: "medium", timeStyle: "short", timeZone: tz }).format(new Date(iso)) : "—";
@@ -73,6 +80,16 @@ export function Settings({ initial }: { initial: Data }) {
           Shared token:{" "}
           <span className={`pill ${data.health.tokenConfigured ? "border-ok text-ok" : "border-cherry text-cherry"}`}>
             {data.health.tokenConfigured ? "Configured" : "Not configured"}
+          </span>
+        </p>
+        <p className="mt-3 text-sm" data-testid="scheduled-health">
+          Scheduled reminders and weekly digest:{" "}
+          <span className={`pill ${data.health.scheduled.enabled ? "border-warn text-warn" : "border-ok text-ok"}`}>
+            {data.health.scheduled.enabled ? "Enabled" : "Disabled (default)"}
+          </span>{" "}
+          · REMINDER_TOKEN:{" "}
+          <span className={`pill ${data.health.scheduled.reminderTokenConfigured ? "border-ok text-ok" : "border-cherry text-cherry"}`}>
+            {data.health.scheduled.reminderTokenConfigured ? "Configured" : "Not configured"}
           </span>
         </p>
         <p className="mt-3 text-sm text-muted">Commit-by hour: {String(data.commitByHour).padStart(2, "0")}:00 ({data.tz}). Set with COMMIT_BY_HOUR on the server.</p>

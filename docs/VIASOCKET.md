@@ -47,3 +47,60 @@ steps by full path (`context?.res?.step?.field`), `if` guards (no try/catch), no
    Columns: `event_id, date, committed_points, delivered_points, promises_kept_pct, highlight, logged_at`. Skip when `is_test`.
 4. `ledger_review`: Slack + email to the owner: confirmed vs claimed per outcome, reviewer notes.
 Use **private** destinations only (a private channel or DM, a test inbox, a test sheet) until the project is public.
+
+---
+
+# Phase 4: scheduled flows (reminders and weekly digest)
+
+**Status: server side done and tested; the two viaSocket flows are NOT created yet** (see "Blockers" below).
+
+## Server endpoints (all need the `x-reminder-token: <REMINDER_TOKEN>` header)
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/status?date=today` | `{date, weekday, isWorkday, committed, hasDraft, closed, commitDeadlineAt, due:{morning, evening}, enabled}`. Read-only, no work content. |
+| `POST /api/scheduled/claim` `{kind}` | `kind` ∈ `reminder_morning`, `reminder_evening`, `weekly_digest`. Returns `{send:true,eventId,attempt}` or `{send:false,reason}`. |
+| `POST /api/scheduled/confirm` `{eventId, ok, error?}` | The flow reports its send result. `error` is a short code like `slack_error`. |
+| `GET /api/report?week=YYYY-MM-DD[&digest=1]` | The weekly report (same JSON as the Report screen). `digest=1` adds `digest.text`, `digest.subject`, `digest.snapshot`. |
+
+Security: a token in the URL is refused (400); missing/wrong token 401; 10 failures per 15 min per IP then 429; token not configured (or < 16 chars) 503.
+The token is compared in constant time and never logged or returned. `POST` routes skip the browser Origin check because they carry no cookie.
+
+## Idempotency and the server-side guards
+
+The flow decides nothing about *whether* to send — the server does, so a scheduler that fires twice (or in the wrong time zone) is harmless:
+
+- `reminder_morning:<date>`, `reminder_evening:<date>`, `weekly_digest:<monday>` — different keys for morning/evening; one digest per week.
+- First claim → `send:true`; a second claim while the first is running (15-minute lease) → `in_progress`; after `confirm ok` → `already_sent` forever.
+- A failed send (`confirm ok:false`) can be claimed again, up to 3 attempts, then `max_attempts`. A claim never confirmed becomes claimable after the lease.
+- Gates (evaluated in `APP_TZ`, never in the scheduler's zone): Mon–Fri only (`weekend`); morning only before the commit deadline (`deadline_passed`) and only if not committed (`already_committed`); evening only from 17:00 (`too_early`) and only if the day is open (`already_closed`); digest on Friday from 17:00 (`not_friday`, `too_early`).
+- **`SCHEDULED_REMINDERS_ENABLED` must be `1`**; otherwise every claim returns `disabled`. It is off by default.
+
+## `ledger_reminders` (one flow, cron `30 10,18 * * 1-5`)
+
+1. `get_status` — GET `/api/status?date=today` with the token header. Stop if the request fails (non-2xx) or `isWorkday` is false.
+2. `pick_kind` — `morning` if `due.morning`; else `evening` if `due.evening`; else stop. (Chosen from the server's flags, not the flow's clock.)
+3. `claim` — POST `/api/scheduled/claim` `{kind:"reminder_morning"|"reminder_evening"}`. Stop unless `send` is true.
+4. `send_*` — private Slack message and/or email **only to approved test destinations**: "Commit today's plan before 11:00" / "Close your day: write the most valuable thing delivered".
+5. `confirm` — POST `/api/scheduled/confirm` with `{eventId, ok:true}`; on any failure `{eventId, ok:false, error:"<code>"}`.
+
+## `ledger_weekly_digest` (cron `30 17 * * 5`)
+
+1. `get_digest` — GET `/api/report?digest=1` (current week) with the token header. Stop on non-2xx.
+2. `claim` — `{kind:"weekly_digest"}`; stop unless `send`.
+3. `send_digest` — email/post `data.digest.text` (subject `data.digest.subject`) to the approved private destination.
+4. `confirm`.
+Friday's digest is a **snapshot** (`digest.snapshot.label`: "SNAPSHOT as of 5:30 PM Asia/Kolkata — today is still open…") unless the day is already closed.
+
+Step-code rules (from the viaSocket docs): lowercase_underscore names; read earlier steps by full path (`context?.res?.step?.field`); `if` guards, no try/catch; markdown `console.log`; end with `return`. Never put the token in step code literally if the flow has a secret store (undocumented — see below); never log it.
+
+## Blockers (why the flows are not created)
+
+1. **The app is not reachable from viaSocket.** Flows call `/api/status` and `/api/report` over the internet. The project must stay private until 15 Nov and nothing is deployed, so there is no URL to call. Deploying is Phase 5.
+2. **No approved destination is connected.** `karishma1726@gmail.com` is not a connected Gmail or Sheets account (only two other Gmail accounts exist), and Slack was skipped.
+3. **Undocumented in the connector's docs** (so not assumed): (a) the time zone in which `cronStatement` is evaluated; (b) whether step code may call `fetch`, or an HTTP/API app action must be used; (c) how to store a secret for the flow. Check (a) with one dry run in run history before relying on it. If cron runs in UTC, use `0 5,13 * * 1-5` (10:30/18:30 IST) and `0 12 * * 5` (17:30 IST). The server's gates make a wrong zone *skip* a reminder rather than send at the wrong time.
+4. Nothing may be sent without explicit approval: keep `SCHEDULED_REMINDERS_ENABLED=0` until destinations are approved.
+
+## Server configuration
+
+`REMINDER_TOKEN` (≥ 16 chars), `SCHEDULED_REMINDERS_ENABLED` (default off). Both are shown (configured / enabled — never the values) in Settings.

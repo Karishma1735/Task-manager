@@ -116,6 +116,7 @@ function record(
 export async function deliver(db: Db, id: number, clock: Clock, fetchImpl: Fetch = fetch): Promise<"sent" | "retry" | "failed" | null> {
   const row = claim(db, id, clock());
   if (!row) return null;
+  if (!EVENT_TYPES.includes(row.type as EventType)) return null;
   const type = row.type as EventType;
   const url = EVENT_TYPES.includes(type) ? hookUrl(type) : null;
   const token = sharedToken();
@@ -153,7 +154,14 @@ export async function processDue(db: Db, clock: Clock, fetchImpl: Fetch = fetch)
     const due = db
       .select({ id: notifications.id })
       .from(notifications)
-      .where(and(eq(notifications.status, "pending"), or(sql`${notifications.nextAttemptAt} is null`, lte(notifications.nextAttemptAt, nowIso))))
+      .where(
+        and(
+          eq(notifications.status, "pending"),
+          // Scheduled-flow claims (reminders, digest) are owned by the flows, never delivered from here.
+          inArray(notifications.type, [...EVENT_TYPES]),
+          or(sql`${notifications.nextAttemptAt} is null`, lte(notifications.nextAttemptAt, nowIso)),
+        ),
+      )
       .orderBy(asc(notifications.id))
       .limit(BATCH)
       .all();

@@ -411,12 +411,13 @@ describe("configuration safety", () => {
     expect(EVENT_TYPES).toHaveLength(3);
   });
 
-  it("a bad route for an unknown type fails cleanly", async () => {
+  it("an unknown event type is never delivered (left alone, no call out)", async () => {
     const id = w.db.transaction((tx) => enqueue(tx, { eventId: "weird:1", type: "weird" as never, date: DATE, payload: {} }, now).id);
     const { fn, calls } = mockFetch();
-    expect(await deliver(w.db, id, clock, fn)).toBe("failed");
+    expect(await deliver(w.db, id, clock, fn)).toBeNull();
+    expect(await processDue(w.db, clock, fn)).toBe(0);
     expect(calls).toHaveLength(0);
-    expect(rows()[0]!.lastError).toBe("not_configured");
+    expect(rows()[0]!.status).toBe("pending");
   });
 });
 

@@ -7,8 +7,9 @@
  *  409 state conflict (already locked/closed, deadline passed, open outcomes)
  *  422 semantically invalid input or rule violation (validation, 4th outcome, past day, missing proof)
  *  429 rate limited
+ *  503 feature not configured on this server
  */
-export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 422 | 429;
+export type ErrorStatus = 400 | 401 | 403 | 404 | 409 | 422 | 429 | 503;
 
 export class ApiError extends Error {
   constructor(

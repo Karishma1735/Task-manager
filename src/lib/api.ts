@@ -4,6 +4,7 @@ import { readCookie, requireRole, getSessionUser, SESSION_COOKIE, type Actor, ty
 import { systemClock } from "@/lib/clock";
 import { ApiError, badRequest, forbidden } from "@/lib/errors";
 import { kickOutbox } from "@/lib/outbox";
+import { assertScheduledAuth } from "@/lib/scheduled-auth";
 export { parseBody } from "@/lib/validate";
 
 export interface Ctx {
@@ -93,4 +94,27 @@ export function route(roles: Role[] | "public", fn: (c: Ctx) => Promise<NextResp
 
 export function clientIp(req: Request): string {
   return req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || req.headers.get("x-real-ip") || "local";
+}
+
+export interface TokenCtx {
+  req: Request;
+  db: Db;
+  now: Date;
+  json: () => Promise<unknown>;
+}
+
+/**
+ * Routes called by viaSocket's scheduled flows. Authenticated only by the REMINDER_TOKEN header
+ * (no cookie, so there is no ambient credential for a cross-site request to ride on — no Origin check).
+ */
+export function tokenRoute(fn: (c: TokenCtx) => Promise<NextResponse> | NextResponse) {
+  return async (req: Request): Promise<NextResponse> => {
+    try {
+      const now = systemClock();
+      assertScheduledAuth(req, now);
+      return await fn({ req, db: getDb(), now, json: () => readJson(req) });
+    } catch (e) {
+      return errorResponse(e);
+    }
+  };
 }

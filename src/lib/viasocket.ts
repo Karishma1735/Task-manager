@@ -63,8 +63,16 @@ export interface WebhookHealth {
 }
 
 /** Health without ever revealing a URL or token. */
-export function webhookHealth(): { hooks: WebhookHealth[]; tokenConfigured: boolean } {
+export function webhookHealth(): {
+  hooks: WebhookHealth[];
+  tokenConfigured: boolean;
+  scheduled: { reminderTokenConfigured: boolean; enabled: boolean };
+} {
   return {
+    scheduled: {
+      reminderTokenConfigured: (process.env.REMINDER_TOKEN?.trim().length ?? 0) >= 16,
+      enabled: process.env.SCHEDULED_REMINDERS_ENABLED === "1",
+    },
     hooks: EVENT_TYPES.map((t) => ({ type: t, flow: FLOW_NAME[t], configured: hookUrl(t) !== null })),
     tokenConfigured: sharedToken() !== null,
   };

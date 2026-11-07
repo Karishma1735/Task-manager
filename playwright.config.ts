@@ -9,6 +9,7 @@ process.env.E2E_OWNER_PASSWORD ??= randomBytes(18).toString("base64url");
 process.env.E2E_REVIEWER_PASSWORD ??= randomBytes(18).toString("base64url");
 
 process.env.E2E_HOOK_TOKEN ??= randomBytes(18).toString("base64url");
+process.env.E2E_REMINDER_TOKEN ??= randomBytes(24).toString("base64url");
 
 const PORT = 3100;
 const MOCK_PORT = 3101;
@@ -55,6 +56,8 @@ export default defineConfig({
       VIASOCKET_SHARED_TOKEN: process.env.E2E_HOOK_TOKEN!,
       VIASOCKET_ALLOW_ANY_HOST: "1",
       OUTBOX_RETRY_DELAYS_MIN: "0,0,0",
+      REMINDER_TOKEN: process.env.E2E_REMINDER_TOKEN!,
+      SCHEDULED_REMINDERS_ENABLED: "1", // off by default in real configs; on here (no destinations are wired in e2e)
       APP_BASE_URL: `http://localhost:${PORT}`,
     },
   },

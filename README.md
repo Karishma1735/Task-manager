@@ -73,3 +73,9 @@ Errors: 400 malformed · 401 unauthenticated · 403 role/CSRF · 404 · 409 stat
 Outbox + webhook delivery for `commit`, `daily_report` and `review` events — see [docs/VIASOCKET.md](docs/VIASOCKET.md).
 Owner-only: `GET /api/notifications`, `POST /api/notifications/:id/retry`, `POST /api/notifications/test`, and the **Settings** screen (`/settings`).
 Set `VIASOCKET_HOOK_*`, `VIASOCKET_SHARED_TOKEN` and `APP_BASE_URL` on the server (see `.env.example`). Automated tests use a mock webhook only.
+
+## Phase 4: scheduled reminders and weekly digest
+
+Token-protected endpoints for viaSocket's scheduled flows: `GET /api/status`, `POST /api/scheduled/claim|confirm`, and `GET /api/report` (with `x-reminder-token`; `&digest=1` adds the weekly digest text).
+Reminders and the digest are idempotent per date/week, only claimable in the app's timezone windows, and **off until `SCHEDULED_REMINDERS_ENABLED=1`**.
+The viaSocket flows themselves are not created yet — see the blockers in [docs/VIASOCKET.md](docs/VIASOCKET.md).
