@@ -4,6 +4,8 @@ import { z } from "zod";
 import type { Db } from "@/db";
 import { dayNotes, days, outcomes, reviews } from "@/db/schema";
 import { writeAudit } from "@/lib/audit";
+import { buildReviewEvent } from "@/lib/events";
+import { enqueue } from "@/lib/outbox";
 import { requireRole, type Actor } from "@/lib/auth";
 import { conflict, invalid, notFound } from "@/lib/errors";
 import { assertDateParam } from "@/lib/ledger";
@@ -45,7 +47,7 @@ export function putReview(db: Db, actor: Actor | null, outcomeId: number, rawInp
     const after = before
       ? tx.update(reviews).set({ confirmedPoints: input.confirmedPoints, updatedAt: at }).where(eq(reviews.id, before.id)).returning().get()
       : tx.insert(reviews).values({ outcomeId, reviewerId: reviewer.id, confirmedPoints: input.confirmedPoints, updatedAt: at }).returning().get();
-    writeAudit(tx, {
+    const auditId = writeAudit(tx, {
       at: now,
       actorId: reviewer.id,
       action: before ? "review.update" : "review.create",
@@ -54,6 +56,8 @@ export function putReview(db: Db, actor: Actor | null, outcomeId: number, rawInp
       before: before ? { ...before, claimedLevel: o.level } : { outcomeId, claimedLevel: o.level },
       after,
     });
+    // The audit-log id makes every legitimate change a distinct event (later edits are never discarded).
+    enqueue(tx, buildReviewEvent(tx, o.date, auditId, { kind: "score", outcomeId, reviewerId: reviewer.id }), now);
     return { review: after, changed: true };
   });
 }
@@ -76,7 +80,7 @@ export function putDayNote(db: Db, actor: Actor | null, date: string, rawInput: 
     const after = before
       ? tx.update(dayNotes).set({ note: input.note, updatedAt: at }).where(and(eq(dayNotes.date, date), eq(dayNotes.reviewerId, reviewer.id))).returning().get()
       : tx.insert(dayNotes).values({ date, reviewerId: reviewer.id, note: input.note, updatedAt: at }).returning().get();
-    writeAudit(tx, {
+    const auditId = writeAudit(tx, {
       at: now,
       actorId: reviewer.id,
       action: before ? "day_note.update" : "day_note.create",
@@ -85,6 +89,7 @@ export function putDayNote(db: Db, actor: Actor | null, date: string, rawInput: 
       before,
       after,
     });
+    enqueue(tx, buildReviewEvent(tx, date, auditId, { kind: "note", reviewerId: reviewer.id }), now);
     return { note: after, changed: true };
   });
 }

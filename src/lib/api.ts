@@ -3,6 +3,7 @@ import { getDb, type Db } from "@/db";
 import { readCookie, requireRole, getSessionUser, SESSION_COOKIE, type Actor, type Role } from "@/lib/auth";
 import { systemClock } from "@/lib/clock";
 import { ApiError, badRequest, forbidden } from "@/lib/errors";
+import { kickOutbox } from "@/lib/outbox";
 export { parseBody } from "@/lib/validate";
 
 export interface Ctx {
@@ -80,7 +81,10 @@ export function route(roles: Role[] | "public", fn: (c: Ctx) => Promise<NextResp
         );
       }
       const params = (await rc?.params) ?? {};
-      return await fn({ req, db, now, actor: actor as Actor, params, json: () => readJson(req) });
+      const res = await fn({ req, db, now, actor: actor as Actor, params, json: () => readJson(req) });
+      // Deliver queued events only *after* the business transaction has committed; never awaited.
+      if (res.status < 400 && !SAFE_METHODS.has(req.method)) kickOutbox(db, systemClock);
+      return res;
     } catch (e) {
       return errorResponse(e);
     }

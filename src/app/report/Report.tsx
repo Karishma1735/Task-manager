@@ -59,6 +59,7 @@ export function Report({ initial, role, userName }: { initial: ReportView; role:
             <span className="px-2 text-muted" aria-hidden>Latest</span>
           )}
           {role === "owner" && <Link className="btn btn-quiet" href="/my-day">My day</Link>}
+          {role === "owner" && <Link className="btn btn-quiet" href="/settings">Settings</Link>}
           <LogoutButton />
         </nav>
       </header>

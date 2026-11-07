@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { POST as login } from "@/app/api/auth/login/route";
 import { POST as logoutRoute } from "@/app/api/auth/logout/route";
 import { GET as me } from "@/app/api/auth/me/route";
@@ -13,6 +13,11 @@ import { GET as myDay } from "@/app/api/my-day/route";
 import { GET as reportRoute } from "@/app/api/report/route";
 import { PUT as reviewRoute } from "@/app/api/reviews/[outcomeId]/route";
 import { PUT as noteRoute } from "@/app/api/day-notes/[date]/route";
+import { GET as notificationsRoute } from "@/app/api/notifications/route";
+import { POST as retryRoute } from "@/app/api/notifications/[id]/retry/route";
+import { POST as testEventRoute } from "@/app/api/notifications/test/route";
+import { getDb } from "@/db";
+import { notifications } from "@/db/schema";
 import { loginLimiter } from "@/lib/auth";
 import { makeWorld, MON_0930 } from "./helpers";
 
@@ -42,6 +47,9 @@ async function signIn(email: string) {
 
 let owner: string;
 let reviewer: string;
+afterEach(() => {
+  for (const k of ["VIASOCKET_HOOK_COMMIT", "VIASOCKET_SHARED_TOKEN"]) delete process.env[k];
+});
 beforeEach(async () => {
   const w = await makeWorld();
   globalThis.__vlDb = w.db;
@@ -184,5 +192,55 @@ describe("reviewer verification over HTTP", () => {
     expect(rep.body.data.days[0].notes[0].note).toBe("Great work");
     expect((await call(reportRoute as Handler, req("GET", "/api/report?week=2026-11-10", { cookie: reviewer }))).status).toBe(400);
     expect((await call(reportRoute as Handler, req("GET", "/api/report"))).status).toBe(401);
+  });
+});
+
+describe("notification endpoints (owner only)", () => {
+  const SECRETS = { VIASOCKET_HOOK_COMMIT: "https://flow.sokt.io/func/scrSECRETID", VIASOCKET_SHARED_TOKEN: "tok_super_secret_value" };
+  beforeEach(() => void Object.assign(process.env, SECRETS));
+
+  it("anonymous 401, reviewer 403 on list, retry and test", async () => {
+    for (const cookie of [undefined, reviewer]) {
+      const status = cookie ? 403 : 401;
+      expect((await call(notificationsRoute as Handler, req("GET", "/api/notifications", { cookie }))).status).toBe(status);
+      expect((await call(retryRoute as Handler, req("POST", "/api/notifications/1/retry", { cookie, body: {} }), { id: "1" })).status).toBe(status);
+      expect((await call(testEventRoute as Handler, req("POST", "/api/notifications/test", { cookie, body: { type: "commit" } }))).status).toBe(status);
+    }
+  });
+
+  it("owner queues a test event, sees it in the log, and the response never contains URLs or tokens", async () => {
+    expect((await call(testEventRoute as Handler, req("POST", "/api/notifications/test", { cookie: owner, body: { type: "nope" } }))).status).toBe(422);
+    expect((await call(testEventRoute as Handler, req("POST", "/api/notifications/test", { cookie: owner, body: { type: "commit" }, origin: "http://evil.test" }))).status).toBe(403);
+    const t = await call(testEventRoute as Handler, req("POST", "/api/notifications/test", { cookie: owner, body: { type: "commit" } }));
+    expect(t.status).toBe(201);
+    const list = await call(notificationsRoute as Handler, req("GET", "/api/notifications", { cookie: owner }));
+    expect(list.status).toBe(200);
+    expect(list.body.data.notifications[0]).toMatchObject({ type: "commit", status: "pending" });
+    expect(list.body.data.health.hooks.find((h: any) => h.type === "commit").configured).toBe(true);
+    expect(list.body.data.health.tokenConfigured).toBe(true);
+    const text = JSON.stringify(list.body);
+    for (const secret of [SECRETS.VIASOCKET_HOOK_COMMIT, "scrSECRETID", SECRETS.VIASOCKET_SHARED_TOKEN, "payload"]) expect(text).not.toContain(secret);
+  });
+
+  it("owner can retry only failed notifications", async () => {
+    const t = await call(testEventRoute as Handler, req("POST", "/api/notifications/test", { cookie: owner, body: { type: "review" } }));
+    const id = t.body.data.id as number;
+    const retry = () => call(retryRoute as Handler, req("POST", `/api/notifications/${id}/retry`, { cookie: owner, body: {} }), { id: String(id) });
+    expect((await retry()).status).toBe(409); // still pending
+    const { eq } = await import("drizzle-orm");
+    getDb().update(notifications).set({ status: "failed", lastError: "http_500" }).where(eq(notifications.id, id)).run();
+    const ok = await retry();
+    expect(ok.status).toBe(200);
+    expect(ok.body.data).toEqual({ id, status: "pending" });
+    expect((await call(retryRoute as Handler, req("POST", "/api/notifications/abc/retry", { cookie: owner, body: {} }), { id: "abc" })).status).toBe(400);
+    expect((await call(retryRoute as Handler, req("POST", "/api/notifications/9999/retry", { cookie: owner, body: {} }), { id: "9999" })).status).toBe(404);
+  });
+
+  it("the business endpoints queue events as a side effect (commit → one 'commit' notification)", async () => {
+    await call(addOutcomeRoute as Handler, req("POST", "/api/days/2026-11-09/outcomes", { cookie: owner, body: { title: "t", doneMeans: "d", level: 4 } }), D);
+    await call(commitRoute as Handler, req("POST", "/api/days/2026-11-09/commit", { cookie: owner, body: {} }), D);
+    await call(commitRoute as Handler, req("POST", "/api/days/2026-11-09/commit", { cookie: owner, body: {} }), D); // 409: no second event
+    const list = await call(notificationsRoute as Handler, req("GET", "/api/notifications", { cookie: owner }));
+    expect(list.body.data.notifications.map((n: any) => n.eventId)).toEqual(["commit:2026-11-09"]);
   });
 });

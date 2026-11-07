@@ -8,7 +8,10 @@ process.env.E2E_REVIEWER_EMAIL ??= "reviewer@e2e.invalid";
 process.env.E2E_OWNER_PASSWORD ??= randomBytes(18).toString("base64url");
 process.env.E2E_REVIEWER_PASSWORD ??= randomBytes(18).toString("base64url");
 
+process.env.E2E_HOOK_TOKEN ??= randomBytes(18).toString("base64url");
+
 const PORT = 3100;
+const MOCK_PORT = 3101;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -22,7 +25,14 @@ export default defineConfig({
     launchOptions: process.env.PW_CHROMIUM_PATH ? { executablePath: process.env.PW_CHROMIUM_PATH } : {},
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
-  webServer: {
+  webServer: [
+    {
+      command: "node e2e/mock-webhook.mjs",
+      url: `http://localhost:${MOCK_PORT}/__ready`,
+      reuseExistingServer: false,
+      env: { MOCK_PORT: String(MOCK_PORT), MOCK_EXPECTED_TOKEN: process.env.E2E_HOOK_TOKEN! },
+    },
+    {
     command: `sh -c "rm -rf .e2e && npm run db:setup && npx next build && npx next start -p ${PORT}"`,
     url: `http://localhost:${PORT}/login`,
     timeout: 300_000,
@@ -38,6 +48,15 @@ export default defineConfig({
       VL_TEST_NOW: "2026-11-09T04:00:00.000Z",
       VL_ALLOW_TEST_CLOCK: "1",
       BCRYPT_COST: "4",
+      // viaSocket webhooks point at the local mock — the e2e run never contacts the real service.
+      VIASOCKET_HOOK_COMMIT: `http://localhost:${MOCK_PORT}/hook/commit`,
+      VIASOCKET_HOOK_REPORT: `http://localhost:${MOCK_PORT}/hook/daily_report`,
+      VIASOCKET_HOOK_REVIEW: `http://localhost:${MOCK_PORT}/hook/review`,
+      VIASOCKET_SHARED_TOKEN: process.env.E2E_HOOK_TOKEN!,
+      VIASOCKET_ALLOW_ANY_HOST: "1",
+      OUTBOX_RETRY_DELAYS_MIN: "0,0,0",
+      APP_BASE_URL: `http://localhost:${PORT}`,
     },
   },
+  ],
 });

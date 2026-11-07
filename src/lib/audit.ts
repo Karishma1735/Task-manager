@@ -12,8 +12,9 @@ export interface AuditEntry {
 }
 
 /** Must be called inside the same transaction as the mutation it records. */
-export function writeAudit(tx: DbOrTx, e: AuditEntry): void {
-  tx.insert(auditLog)
+export function writeAudit(tx: DbOrTx, e: AuditEntry): number {
+  return tx
+    .insert(auditLog)
     .values({
       at: e.at.toISOString(),
       actorId: e.actorId,
@@ -23,5 +24,6 @@ export function writeAudit(tx: DbOrTx, e: AuditEntry): void {
       beforeJson: e.before === undefined ? null : JSON.stringify(e.before),
       afterJson: e.after === undefined ? null : JSON.stringify(e.after),
     })
-    .run();
+    .returning({ id: auditLog.id })
+    .get().id;
 }

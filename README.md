@@ -67,3 +67,9 @@ Errors: 400 malformed · 401 unauthenticated · 403 role/CSRF · 404 · 409 stat
 - Reviews need a **closed** day and a **delivered** outcome (done + proof + result). Re-saving the same score writes no audit entry.
 - Eight-week bars bucket by the *effective* level (confirmed points if reviewed, else the claim); a reviewer score of 0 adds nothing, and confirmed vs awaiting are drawn solid vs striped.
 - Circle size ∝ √points so area tracks worth; a zero-scored outcome is a dashed empty circle drawn at its claimed size.
+
+## Phase 3: viaSocket events
+
+Outbox + webhook delivery for `commit`, `daily_report` and `review` events — see [docs/VIASOCKET.md](docs/VIASOCKET.md).
+Owner-only: `GET /api/notifications`, `POST /api/notifications/:id/retry`, `POST /api/notifications/test`, and the **Settings** screen (`/settings`).
+Set `VIASOCKET_HOOK_*`, `VIASOCKET_SHARED_TOKEN` and `APP_BASE_URL` on the server (see `.env.example`). Automated tests use a mock webhook only.

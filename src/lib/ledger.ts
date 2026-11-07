@@ -7,6 +7,8 @@ import type { Db, DbOrTx } from "@/db";
 import { dayNotes, days, goals, outcomes, reviews, type Day, type Goal, type Outcome } from "@/db/schema";
 import { parseBody } from "@/lib/validate";
 import { writeAudit } from "@/lib/audit";
+import { buildCommitEvent, buildDailyReportEvent } from "@/lib/events";
+import { enqueue } from "@/lib/outbox";
 import { requireRole, type Actor } from "@/lib/auth";
 import { appTz, commitByHour } from "@/lib/env";
 import { badRequest, conflict, invalid, notFound } from "@/lib/errors";
@@ -163,6 +165,7 @@ export function commitDay(db: Db, actor: Actor | null, date: string, now: Date, 
     const day = ensureDay(tx, date, now, owner);
     const after = tx.update(days).set({ lockedAt: now.toISOString() }).where(eq(days.date, date)).returning().get();
     writeAudit(tx, { at: now, actorId: owner.id, action: "day.commit", entity: "day", entityId: date, before: before ?? day, after });
+    enqueue(tx, buildCommitEvent(tx, date, cfg), now); // same transaction: no commit, no event
     return after;
   });
 }
@@ -298,6 +301,7 @@ export function closeDay(db: Db, actor: Actor | null, date: string, rawInput: un
       .returning()
       .get();
     writeAudit(tx, { at: now, actorId: owner.id, action: "day.close", entity: "day", entityId: date, before, after });
+    enqueue(tx, buildDailyReportEvent(tx, date), now);
     return after;
   });
 }

@@ -142,6 +142,9 @@ export const notifications = sqliteTable(
     attempts: integer("attempts").notNull().default(0),
     lastError: text("last_error"),
     sentAt: text("sent_at"),
+    createdAt: text("created_at").notNull().default("1970-01-01T00:00:00.000Z"),
+    /** When the next delivery attempt is due (pending rows only). */
+    nextAttemptAt: text("next_attempt_at"),
   },
   (t) => [
     uniqueIndex("notifications_event_unique").on(t.eventId),
@@ -165,6 +168,24 @@ export const auditLog = sqliteTable(
   (t) => [index("audit_entity_idx").on(t.entity, t.entityId)],
 );
 
+/** One row per delivery attempt. Never stores payloads, URLs or response bodies. */
+export const deliveryLog = sqliteTable(
+  "delivery_log",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    notificationId: integer("notification_id")
+      .notNull()
+      .references(() => notifications.id),
+    at: text("at").notNull(),
+    attempt: integer("attempt").notNull(),
+    outcome: text("outcome", { enum: ["sent", "retry_scheduled", "failed"] }).notNull(),
+    httpStatus: integer("http_status"),
+    error: text("error"),
+  },
+  (t) => [index("delivery_log_notification_idx").on(t.notificationId)],
+);
+
+export type Notification = typeof notifications.$inferSelect;
 export type User = typeof users.$inferSelect;
 export type Goal = typeof goals.$inferSelect;
 export type Day = typeof days.$inferSelect;

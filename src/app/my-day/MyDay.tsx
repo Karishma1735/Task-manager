@@ -71,6 +71,7 @@ export function MyDay({ initial, userName }: { initial: MyDayView; userName: str
         </div>
         <nav aria-label="Account" className="flex items-center gap-2">
           <Link className="btn btn-quiet" href="/report">Report</Link>
+          <Link className="btn btn-quiet" href="/settings">Settings</Link>
           <LogoutButton />
         </nav>
       </header>
