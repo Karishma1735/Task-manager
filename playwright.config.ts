@@ -48,6 +48,7 @@ export default defineConfig({
       // Pin the *server* clock to Monday 9 Nov 2026, 09:30 IST so the 11:00 deadline can't make runs flaky.
       VL_TEST_NOW: "2026-11-09T04:00:00.000Z",
       VL_ALLOW_TEST_CLOCK: "1",
+      VL_E2E_ALLOW: "1", // the only way a production build may use a test clock / a throwaway DB path
       BCRYPT_COST: "4",
       // viaSocket webhooks point at the local mock — the e2e run never contacts the real service.
       VIASOCKET_HOOK_COMMIT: `http://localhost:${MOCK_PORT}/hook/commit`,

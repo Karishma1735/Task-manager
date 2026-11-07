@@ -72,6 +72,7 @@ test("Settings shows the scheduled-flow gate and token status without revealing 
   await page.getByLabel("Email").fill(process.env.E2E_OWNER_EMAIL!);
   await page.getByLabel("Password").fill(process.env.E2E_OWNER_PASSWORD!);
   await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/my-day/); // let the sign-in finish before navigating away
   await page.goto("/settings");
   const health = page.getByTestId("scheduled-health");
   await expect(health).toContainText("Enabled");

@@ -38,6 +38,8 @@ const sessionKey = (token: string) => createHmac("sha256", sessionSecret()).upda
 
 export const loginLimiter = new AttemptLimiter(5, 15 * 60 * 1000);
 const ipLimiter = new AttemptLimiter(30, 15 * 60 * 1000);
+// Keyed by email alone: a spoofed x-forwarded-for cannot reset this one.
+export const emailLimiter = new AttemptLimiter(20, 15 * 60 * 1000);
 
 export interface LoginResult {
   token: string;
@@ -53,7 +55,11 @@ export async function login(
   const email = input.email.trim().toLowerCase();
   const nowMs = now.getTime();
   const userKey = `${input.ip}|${email}`;
-  const wait = Math.max(loginLimiter.retryAfterMs(userKey, nowMs), ipLimiter.retryAfterMs(input.ip, nowMs));
+  const wait = Math.max(
+    loginLimiter.retryAfterMs(userKey, nowMs),
+    ipLimiter.retryAfterMs(input.ip, nowMs),
+    emailLimiter.retryAfterMs(email, nowMs),
+  );
   if (wait > 0) {
     throw new ApiError(429, "rate_limited", "Too many sign-in attempts. Try again later.", {
       retryAfterSeconds: Math.ceil(wait / 1000),
@@ -64,9 +70,11 @@ export async function login(
   if (!user || !ok) {
     loginLimiter.fail(userKey, nowMs);
     ipLimiter.fail(input.ip, nowMs);
+    emailLimiter.fail(email, nowMs);
     throw new ApiError(401, "invalid_credentials", "Invalid email or password");
   }
   loginLimiter.reset(userKey);
+  emailLimiter.reset(email);
   const token = randomBytes(32).toString("base64url");
   const expiresAt = new Date(nowMs + SESSION_TTL_MS);
   db.transaction((tx) => {

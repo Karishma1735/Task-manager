@@ -27,7 +27,10 @@ export function errorResponse(e: unknown): NextResponse {
       { status: e.status },
     );
   }
-  console.error("Unhandled API error", e);
+  // Log only the kind of failure. Database errors carry the failed SQL *with its parameters*
+  // (work titles, proof links…), and the host keeps logs, so never print the error object itself.
+  const code = (e as { code?: unknown } | null)?.code;
+  console.error("Unhandled API error:", e instanceof Error ? e.name : typeof e, typeof code === "string" ? code : "");
   return NextResponse.json({ error: { code: "internal", message: "Internal server error" } }, { status: 500 });
 }
 
@@ -54,6 +57,15 @@ export function assertSameOrigin(req: Request): void {
   if (host) allowed.add(host);
   const fwd = req.headers.get("x-forwarded-host");
   if (fwd) allowed.add(fwd.split(",")[0]!.trim());
+  // Behind a hosting proxy the Host header may be an internal name; the app's own public address is always allowed.
+  const base = process.env.APP_BASE_URL?.trim();
+  if (base) {
+    try {
+      allowed.add(new URL(base).host);
+    } catch {
+      /* ignore a malformed APP_BASE_URL */
+    }
+  }
   if (!allowed.has(originHost)) throw forbidden("Cross-origin request rejected");
 }
 
